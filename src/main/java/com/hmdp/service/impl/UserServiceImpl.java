@@ -10,10 +10,16 @@ import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.util.concurrent.TimeUnit;
+
+import static com.hmdp.utils.RedisConstants.LOGIN_CODE_KEY;
+import static com.hmdp.utils.RedisConstants.LOGIN_CODE_TTL;
 import static com.hmdp.utils.SystemConstants.*;
 
 /**
@@ -29,6 +35,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     private final UserMapper userMapper;
 
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
 
     public UserServiceImpl(UserMapper userMapper) {
         this.userMapper = userMapper;
@@ -43,10 +52,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
         //1.2 符合,生成验证码
         String code = RandomUtil.randomNumbers(6);
-        //2.保存验证码到session （使用魔法值）
-        session.setAttribute(CODE_SESSION_KEY, code);
-        //设置验证码过期时间 当前时间+1分钟
-        session.setAttribute("CODE_EXPIRE_TIME", System.currentTimeMillis() + 60 * 1000);
+        //2.保存验证码到redis
+        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + phone, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
+
         //3.发送验证码
         log.debug("发送短信验证码成功，验证码为:" + code);
         return Result.ok();
