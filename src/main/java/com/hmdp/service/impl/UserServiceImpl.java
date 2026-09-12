@@ -45,6 +45,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String code = RandomUtil.randomNumbers(6);
         //2.保存验证码到session （使用魔法值）
         session.setAttribute(CODE_SESSION_KEY, code);
+        //设置验证码过期时间 当前时间+1分钟
+        session.setAttribute("CODE_EXPIRE_TIME", System.currentTimeMillis() + 60 * 1000);
         //3.发送验证码
         log.debug("发送短信验证码成功，验证码为:" + code);
         return Result.ok();
@@ -60,7 +62,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
         //2.校验验证码
         String cacheCode = (String) session.getAttribute(CODE_SESSION_KEY); //正确验证码（session）
+        Long expireTime = (Long) session.getAttribute("CODE_EXPIRE_TIME"); // 取出过期时间
         String code = loginForm.getCode(); //待验证验证码（前端传入）
+        // 2.1 验证码过期
+        if (expireTime == null || System.currentTimeMillis() > expireTime) {
+            return Result.fail("验证码已过期，请重新获取");
+        }
         //2.1 验证码错误
         if (RegexUtils.isCodeInvalid(code)) {
             return Result.fail("验证码格式错误");
