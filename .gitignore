@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+*.log
+*.pid
+src/main/resources/nginx-1.18.0/logs/
