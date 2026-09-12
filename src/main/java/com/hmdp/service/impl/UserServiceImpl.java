@@ -1,11 +1,14 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
@@ -16,10 +19,10 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import static com.hmdp.utils.RedisConstants.LOGIN_CODE_KEY;
-import static com.hmdp.utils.RedisConstants.LOGIN_CODE_TTL;
+import static com.hmdp.utils.RedisConstants.*;
 import static com.hmdp.utils.SystemConstants.*;
 
 /**
@@ -69,13 +72,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         }
         //2.校验验证码
-        String cacheCode = (String) session.getAttribute(CODE_SESSION_KEY); //正确验证码（session）
-        Long expireTime = (Long) session.getAttribute("CODE_EXPIRE_TIME"); // 取出过期时间
-        String code = loginForm.getCode(); //待验证验证码（前端传入）
-        // 2.1 验证码过期
-        if (expireTime == null || System.currentTimeMillis() > expireTime) {
-            return Result.fail("验证码已过期，请重新获取");
-        }
+        //从redis中取出验证码
+        String cacheCode = stringRedisTemplate.opsForValue().get(phone);
+        //待验证验证码（前端传入）
+        String code = loginForm.getCode();
         //2.1 验证码错误
         if (RegexUtils.isCodeInvalid(code)) {
             return Result.fail("验证码格式错误");
@@ -83,16 +83,26 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         if (cacheCode == null || !cacheCode.equals(code)) {
             return Result.fail("验证码错误");
         }
-        //2.2 验证码一致
+        //2.2 验证码正确
         //3.根据手机号查询用户
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPhone, phone));
         //4.用户不存在，先注册
         if (user == null) {
             user = createUserWithPhone(phone);
         }
-        //5.保存用户信息到session （使用魔法值）
-        session.setAttribute(USER_SESSION_KEY, user);
-        return Result.ok();
+        //5.保存用户信息到redis
+        //生成随机token
+        String token = UUID.randomUUID().toString();
+        //将用户信息转为Hash
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO);
+        //将用户信息存入redis
+        String tokenKey = LOGIN_USER_KEY + token;
+        stringRedisTemplate.opsForHash().putAll(tokenKey, userMap);
+        //设置过期时间(根据用户是否在活跃)：当前活跃时间+36000L
+        stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
+        //6.将token返回给前端
+        return Result.ok(token);
     }
 
     private User createUserWithPhone(String phone) {
