@@ -1,6 +1,7 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -73,7 +75,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
         //2.校验验证码
         //从redis中取出验证码
-        String cacheCode = stringRedisTemplate.opsForValue().get(phone);
+        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
         //待验证验证码（前端传入）
         String code = loginForm.getCode();
         //2.1 验证码错误
@@ -95,13 +97,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String token = UUID.randomUUID().toString();
         //将用户信息转为Hash
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
-        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO);
+        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
+                CopyOptions.create()
+                        .setIgnoreNullValue(true) // 忽略null值
+                        .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString())); // 将所有值转为String
         //将用户信息存入redis
         String tokenKey = LOGIN_USER_KEY + token;
         stringRedisTemplate.opsForHash().putAll(tokenKey, userMap);
-        //设置过期时间(根据用户是否在活跃)：当前活跃时间+36000L
+        //6.设置过期时间(根据用户是否在活跃)：当前活跃时间+36000L
         stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
-        //6.将token返回给前端
+        //7.将token返回给前端
         return Result.ok(token);
     }
 
@@ -110,7 +115,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         User user = new User();
         user.setPhone(phone);//设置手机号
         user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));//设置默认昵称
-        user.setIcon(""); //设置默认头像
+        user.setIcon("https://gss0.baidu.com/94o3dSag_xI4khGko9WTAnF6hhy/zhidao/wh%3D450%2C600/sign=bee1e21540ed2e73fcbc8e28b2318dbd/4610b912c8fcc3ce4b66c4a29845d688d53f20f8.jpg"); //设置默认头像
         //2.保存用户到数据库
         save(user);
         return user;

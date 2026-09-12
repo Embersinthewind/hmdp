@@ -48,8 +48,8 @@ public class UserController {
      */
     @PostMapping("/login")
     public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session) {
-        userService.login(loginForm, session);
-        return Result.ok();
+        // 登录成功后需将 token 返回给前端保存
+        return userService.login(loginForm, session);
     }
 
     /**
