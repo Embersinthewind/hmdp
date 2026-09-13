@@ -56,7 +56,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
         //4.2商铺存在，写入redis
         stringRedisTemplate.opsForValue().set(shopKey, JSONUtil.toJsonStr(shop));
-        stringRedisTemplate.expire(shopKey, CACHE_SHOP_TTL, TimeUnit.MINUTES)
+        stringRedisTemplate.expire(shopKey, CACHE_SHOP_TTL, TimeUnit.MINUTES);
 
         //返回商铺信息
         return Result.ok(shop);
