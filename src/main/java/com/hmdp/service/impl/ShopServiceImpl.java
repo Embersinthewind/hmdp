@@ -11,6 +11,7 @@ import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
@@ -55,10 +56,31 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return Result.fail("商铺不存在");
         }
         //4.2商铺存在，写入redis
-        stringRedisTemplate.opsForValue().set(shopKey, JSONUtil.toJsonStr(shop));
-        stringRedisTemplate.expire(shopKey, CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(shopKey, JSONUtil.toJsonStr(shop), CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        // stringRedisTemplate.expire(shopKey,CACHE_SHOP_TTL, TimeUnit.MINUTES);
 
         //返回商铺信息
         return Result.ok(shop);
+    }
+
+    /**
+     * 更新店铺信息
+     *
+     * @param shop
+     * @return
+     */
+    @Override
+    @Transactional
+    public Result updateShop(Shop shop) {
+        Long id = shop.getId();
+        if (id == null) {
+            return Result.fail("店铺信息不存在！");
+        }
+        //1.写数据库
+        updateById(shop); //Service 层继承来的方法，Service层优先使用
+        // shopMapper.updateById(shop); //直接调用 Mapper（DAO）层继承BaseMapper 自带方法
+        //2.删除缓存
+        stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
+        return Result.ok();
     }
 }
