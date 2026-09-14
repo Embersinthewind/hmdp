@@ -17,8 +17,7 @@ import javax.annotation.Resource;
 
 import java.util.concurrent.TimeUnit;
 
-import static com.hmdp.utils.RedisConstants.CACHE_SHOP_KEY;
-import static com.hmdp.utils.RedisConstants.CACHE_SHOP_TTL;
+import static com.hmdp.utils.RedisConstants.*;
 
 /**
  * <p>
@@ -47,12 +46,19 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             Shop shop = JSONUtil.toBean(shopJson, Shop.class);
             return Result.ok(shop);
         }
+        //②缓存穿透——先判断商铺是否为空对象(这里用的是空字符串)，是则直接结束
+        if (shopJson != null && shopJson.equals("")) {
+            return Result.fail("商铺不存在");
+        }
         //2.2 缓存未命中
         //3.从数据库中查商铺
         Shop shop = shopMapper.selectOne(new LambdaQueryWrapper<Shop>().eq(Shop::getId, id));
         //4.判断商铺是否存在
         if (shop == null) {
             //4.1商铺不存在，返回404
+            // return Result.fail("商铺不存在");
+            //①缓存穿透——商铺不存在时，向缓存写入null对象(这里使用空字符串，并且更改缓存时间（无意义对象不需要缓存太长时间）)
+            stringRedisTemplate.opsForValue().set(shopKey, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
             return Result.fail("商铺不存在");
         }
         //4.2商铺存在，写入redis
