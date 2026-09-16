@@ -25,4 +25,6 @@ public interface IShopService extends IService<Shop> {
     boolean tryLock(String key);
 
     void unLock(String key);
+
+    void saveShopToRedis(Long id, Long expireSeconds);
 }

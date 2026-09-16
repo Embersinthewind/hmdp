@@ -9,12 +9,14 @@ import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
+import com.hmdp.utils.RedisData;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
+import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -204,5 +206,25 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Override
     public void unLock(String key) {
         stringRedisTemplate.delete(key);
+    }
+
+
+    /**
+     * 将商铺数据存到redis
+     *
+     * @param id
+     * @param expireSeconds
+     * @return
+     */
+    @Override
+    public void saveShopToRedis(Long id, Long expireSeconds) {
+        // 1. 查询店铺数据
+        Shop shop = getById(id);
+
+        // 2. 封装逻辑过期时间（使用全参构造，一行搞定）
+        RedisData redisData = new RedisData(LocalDateTime.now().plusSeconds(expireSeconds), shop);
+
+        // 3. 写入 Redis（String 类型，存 JSON 字符串）
+        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(redisData));
     }
 }
