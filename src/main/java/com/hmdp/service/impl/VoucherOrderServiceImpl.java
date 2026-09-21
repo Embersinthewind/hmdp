@@ -61,16 +61,16 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("秒杀已结束!");
         }
         // 秒杀进行中
-        //3.库存是否充足
-        Integer stock = seckillVoucher.getStock();
-        if (stock <= 0) {
+        //3.库存是否充足 ①优惠券id正确 ②stock前后未发生改变（线程安全）
+        boolean success = seckillVoucherService.update()
+                .setSql("stock=stock-1")
+                .eq("voucher_id", voucherId).eq("stock", seckillVoucher.getStock())
+                .update();
+        if (!success) {
             //库存不足
             return Result.fail("库存不足!");
         }
         //库存充足
-        //4.扣减库存
-        seckillVoucher.setStock(stock - 1);
-        seckillVoucherService.updateById(seckillVoucher);
         //5.创建订单
         VoucherOrder voucherOrder = new VoucherOrder();
         //订单id
