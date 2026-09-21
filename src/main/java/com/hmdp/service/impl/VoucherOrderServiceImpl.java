@@ -64,7 +64,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         //3.库存是否充足 ①优惠券id正确 ②stock前后未发生改变（线程安全）
         boolean success = seckillVoucherService.update()
                 .setSql("stock=stock-1")
-                .eq("voucher_id", voucherId).eq("stock", seckillVoucher.getStock())
+                .eq("voucher_id", voucherId).gt("stock", 0) //①voucher_id=voucherId    ②stock > 0
                 .update();
         if (!success) {
             //库存不足
