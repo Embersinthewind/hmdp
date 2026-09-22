@@ -94,7 +94,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
         //5.保存用户信息到redis
         //生成随机token
-        String token = UUID.randomUUID().toString();
+        String token = UUID.randomUUID().toString(true);   //去掉uuid产生的横线
         //将用户信息转为Hash
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
         Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
