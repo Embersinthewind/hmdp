@@ -1,6 +1,7 @@
 package com.hmdp.utils;
 
 
+import cn.hutool.core.lang.UUID;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.concurrent.TimeUnit;
@@ -10,7 +11,12 @@ public class SimpleRedisLock {
     /**
      * 锁前缀
      */
-    private final String key_Prefix = "lock:";
+    private final String Key_Prefix = "lock:";
+    /**
+     * Id前缀
+     * UUID随机数 + '-'
+     */
+    private final String ID_Prefix = UUID.randomUUID().toString(true) + "-";
 
     /**
      * 业务名称
@@ -35,10 +41,10 @@ public class SimpleRedisLock {
      * @return
      */
     public boolean tryLock(long timeoutSed) {
-        //获取当前线程id 作为 线程标识
-        long threadId = Thread.currentThread().getId();
+        //线程标识: Id前缀 - 线程id
+        String threadId = ID_Prefix + Thread.currentThread().getId();
         //获取锁
-        Boolean success = stringRedisTemplate.opsForValue().setIfAbsent(key_Prefix + name, threadId + "", timeoutSed, TimeUnit.SECONDS);
+        Boolean success = stringRedisTemplate.opsForValue().setIfAbsent(Key_Prefix + name, threadId, timeoutSed, TimeUnit.SECONDS);
         //装箱拆箱问题，不能直接返回success（容易空指针）
         return Boolean.TRUE.equals(success);
     }
@@ -48,6 +54,14 @@ public class SimpleRedisLock {
      * 释放锁
      */
     public void unlock() {
-        stringRedisTemplate.delete(key_Prefix + name);
+        // 判断线程标识是否一致
+        // 获取当前线程标识
+        String threadId = ID_Prefix + Thread.currentThread().getId();
+        // 获取锁的线程标识
+        String lockId = stringRedisTemplate.opsForValue().get(Key_Prefix + name);
+        if (lockId.equals(threadId)) {
+            // 一致，释放锁
+            stringRedisTemplate.delete(Key_Prefix + name);
+        }
     }
 }
