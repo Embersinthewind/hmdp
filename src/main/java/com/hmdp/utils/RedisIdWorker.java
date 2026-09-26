@@ -19,6 +19,11 @@ public class RedisIdWorker {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    /**
+     * 生成订单ID
+     * @param keyPrefix
+     * @return
+     */
     public long nextId(String keyPrefix) {
         //1.生成时间戳
         LocalDateTime now = LocalDateTime.now();
