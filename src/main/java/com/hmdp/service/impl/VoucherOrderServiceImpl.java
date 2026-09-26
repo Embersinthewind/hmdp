@@ -27,6 +27,7 @@ import javax.annotation.Resource;
 import java.time.LocalDateTime;
 
 import static com.hmdp.utils.RedisConstants.LOCK_ORDER_KEY;
+import static com.hmdp.utils.RedisConstants.ORDER_SECKILL_KEY;
 
 /**
  * <p>
@@ -130,7 +131,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         //5.创建订单
         VoucherOrder voucherOrder = new VoucherOrder();
         //订单id
-        long orderId = redisIdWorker.nextId("order:seckill:");
+        long orderId = redisIdWorker.nextId(ORDER_SECKILL_KEY);
         voucherOrder.setId(orderId);
 
         //用户id
