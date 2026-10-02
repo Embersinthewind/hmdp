@@ -1,6 +1,8 @@
 package com.hmdp.service.impl;
 
-import com.baomidou.mybatisplus.extension.conditions.query.QueryChainWrapper;
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
@@ -16,7 +18,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
 
@@ -39,6 +44,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     /**
      * 分页查询热门博客
      * 多条
+     *
      * @param current
      * @return
      */
@@ -64,6 +70,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     /**
      * 根据 id 查询一条博客详情
      * 单条
+     *
      * @param id
      * @return
      */
@@ -84,6 +91,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     /**
      * 点赞 / 取消点赞
+     *
      * @param id
      * @return
      */
@@ -98,14 +106,14 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
         String key = BLOG_LIKED_KEY + id;
         //2.判断redis中set集合是否存在该用户
-        Boolean flag = stringRedisTemplate.opsForSet().isMember(key, userId.toString());
-        if (Boolean.TRUE.equals(flag)) {
+        Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
+        if (score != null) {
             //2.1 存在,取消点赞
             // 数据库点赞数 - 1
             boolean isSuccess = update().setSql("liked = liked - 1").eq("id", id).gt("liked", 0).update();
             if (isSuccess) {
                 // 从set集合中移除该用户
-                stringRedisTemplate.opsForSet().remove(key, userId.toString());
+                stringRedisTemplate.opsForZSet().remove(key, userId.toString());
             }
         } else {
             //2.2 不存在,可以点赞
@@ -113,7 +121,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             boolean isSuccess = update().setSql("liked=liked+1").eq("id", id).update();
             if (isSuccess) {
                 // 将该用户加入set集合
-                stringRedisTemplate.opsForSet().add(key, userId.toString());
+                stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
             }
         }
 
@@ -122,6 +130,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     /**
      * 判断当前登录用户有没有给这条博客点过赞
+     *
      * @param blog
      */
     private void isBlogLiked(Blog blog) {
@@ -132,13 +141,14 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         }
         Long userId = user.getId();
         String key = BLOG_LIKED_KEY + blog.getId();
-        Boolean isLiked = stringRedisTemplate.opsForSet()
-                .isMember(key, userId.toString());
-        blog.setIsLike(Boolean.TRUE.equals(isLiked));
+        Double score = stringRedisTemplate.opsForZSet()
+                .score(key, userId.toString());
+        blog.setIsLike(score != null);
     }
 
     /**
      * 根据博客里的 userId，去用户表查出这个用户的昵称和头像，然后塞回博客对象里，这样前端就能显示“这篇博客是谁发的”
+     *
      * @param blog
      */
     private void queryBlogUser(Blog blog) {
@@ -149,5 +159,41 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             blog.setName(user.getNickName());
             blog.setIcon(user.getIcon());
         }
+    }
+
+
+    /**
+     * 点赞排行榜前5
+     * @param id
+     * @return
+     */
+    @Override
+    public Result queryBlogLikes(Long id) {
+        String key = BLOG_LIKED_KEY + id;
+
+        // 1. 从 ZSet 取 Top5  userId（按点赞时间升序）
+        Set<String> top5 = stringRedisTemplate.opsForZSet()
+                .range(key, 0, 4);
+
+        if (CollUtil.isEmpty(top5)) {
+            return Result.ok(Collections.emptyList());
+        }
+
+        // 2. 转成 Long 列表
+        List<Long> userIds = top5.stream()
+                .map(Long::valueOf)
+                .collect(Collectors.toList());
+
+        // 3. 用 FIELD 函数保证顺序
+        String userIdsStr = StrUtil.join(",", userIds);
+        List<UserDTO> userVOList = userService.query()
+                .in("id", userIds)
+                .last("ORDER BY FIELD(id, " + userIdsStr + ")")
+                .list()
+                .stream()
+                .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
+                .collect(Collectors.toList());
+
+        return Result.ok(userVOList);
     }
 }
