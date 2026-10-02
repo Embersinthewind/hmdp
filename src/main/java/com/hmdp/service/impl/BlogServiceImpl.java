@@ -6,18 +6,24 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
+import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -40,6 +46,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private IUserService userService;
+
+    @Resource
+    private IFollowService followService;
 
     /**
      * 分页查询热门博客
@@ -164,6 +173,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     /**
      * 点赞排行榜前5
+     *
      * @param id
      * @return
      */
@@ -195,5 +205,90 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 .collect(Collectors.toList());
 
         return Result.ok(userVOList);
+    }
+
+    @Override
+    public Result saveBlog(Blog blog) {
+        //1.获取登录用户
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录");
+        }
+        Long userId = user.getId();
+        blog.setUserId(userId);
+        //2.保存探店笔记
+        save(blog);
+        //3.查询笔记作者的所有粉丝
+        List<Follow> fans = followService.query().eq("follow_user_id", userId).list();
+        //4.推送笔记id给所有粉丝
+        for (Follow fan : fans) {
+            //获取粉丝id
+            Long fanId = fan.getUserId();
+            //每个粉丝一个收件箱
+            String fanKey = RedisConstants.FEED_KEY + fanId;
+            //推送
+            stringRedisTemplate.opsForZSet().add(fanKey, blog.getId().toString(), System.currentTimeMillis());
+        }
+        //5.返回id
+        return Result.ok(blog.getId());
+    }
+
+    @Override
+    public Result queryBlogOfFollow(Long max, Integer offset) {
+        // 1.获取当前用户
+        Long userId = UserHolder.getUser().getId();
+        String key = RedisConstants.FEED_KEY + userId;
+        // 2.滚动分页查询收件箱 ZREVRANGEBYSCORE key Max Min LIMIT offset count
+        Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet()
+                .reverseRangeByScoreWithScores(key, 0, max, offset, 2);
+        // 3.非空判断
+        if (typedTuples == null || typedTuples.isEmpty()) {
+            //收件箱是空的
+            return Result.ok();
+        }
+
+        // 4.解析数据：blogId、minTime（时间戳）、offset
+        //保存blogId集合
+        List<Long> ids = new ArrayList<>();
+        //保存最小时间
+        long minTime = 0;
+        //保存偏移量     最小值为1（因为上一次滚动查询的最小值至少有1个）
+        int os = 1;
+        for (ZSetOperations.TypedTuple<String> tuple : typedTuples) {
+            // 4.1获取id
+            ids.add(Long.valueOf(tuple.getValue()));
+            // 4.2获取score（时间戳）
+            long time = tuple.getScore().longValue();
+            if (time == minTime) {
+                //有和当前最小时间重复的值,偏移量+1
+                os++;
+            } else {
+                //当前时间不是最小值,进行更换,重置偏移量
+                minTime = time;
+                os = 1;
+            }
+
+        }
+
+        // 5.根据blogId查询blog
+        String idStr = StrUtil.join(",", ids);
+        List<Blog> blogs = query()
+                .in("id", ids)
+                .last("ORDER BY FIELD(id," + idStr + ")")
+                .list();
+        for (Blog blog : blogs) {
+            // 5.1根据blog查询作者
+            queryBlogUser(blog);
+            // 5.2判断当前用户是否对该篇博客点过赞
+            isBlogLiked(blog);
+        }
+
+
+        // 6.封装并返回
+        ScrollResult result = new ScrollResult();
+        result.setList(blogs);
+        result.setMinTime(minTime);
+        result.setOffset(os);
+        return Result.ok(result);
     }
 }
