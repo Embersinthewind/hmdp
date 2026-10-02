@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import java.util.List;
 
+import static com.hmdp.utils.SystemConstants.MAX_PAGE_SIZE;
+
 /**
  * <p>
  * 前端控制器
@@ -53,7 +55,7 @@ public class BlogController {
         UserDTO user = UserHolder.getUser();
         // 根据用户查询
         Page<Blog> page = blogService.query()
-                .eq("user_id", user.getId()).page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+                .eq("user_id", user.getId()).page(new Page<>(current, MAX_PAGE_SIZE));
         // 获取当前页数据
         List<Blog> records = page.getRecords();
         return Result.ok(records);
@@ -61,6 +63,7 @@ public class BlogController {
 
     /**
      * 查询多个blog
+     *
      * @param current
      * @return
      */
@@ -71,6 +74,7 @@ public class BlogController {
 
     /**
      * 根据id查询一个blog
+     *
      * @param id
      * @return
      */
@@ -81,11 +85,27 @@ public class BlogController {
 
     /**
      * 点赞排行榜
+     *
      * @param id
      * @return
      */
     @GetMapping("/likes/{id}")
     public Result queryBlogLikes(@PathVariable("id") Long id) {
         return blogService.queryBlogLikes(id);
+    }
+
+
+    @GetMapping("/of/user")
+    public Result queryBlogByUserId(
+            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam("id") Long id) {
+        // 根据用户查询
+        Page<Blog> page = blogService.query()
+                .eq("user_id", id)
+                .page(new Page<>(current, MAX_PAGE_SIZE));
+
+        // 获取当前页数据
+        List<Blog> records = page.getRecords();
+        return Result.ok(records);
     }
 }
