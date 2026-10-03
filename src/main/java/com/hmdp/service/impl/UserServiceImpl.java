@@ -16,6 +16,7 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.UserHolder;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +28,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -116,6 +118,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return Result.ok(token);
     }
 
+    private User createUserWithPhone(String phone) {
+        //1.创建用户
+        User user = new User();
+        user.setPhone(phone);//设置手机号
+        user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));//设置默认昵称
+        user.setIcon("https://gss0.baidu.com/94o3dSag_xI4khGko9WTAnF6hhy/zhidao/wh%3D450%2C600/sign=bee1e21540ed2e73fcbc8e28b2318dbd/4610b912c8fcc3ce4b66c4a29845d688d53f20f8.jpg"); //设置默认头像
+        //2.保存用户到数据库
+        save(user);
+        return user;
+    }
+
     @Override
     public Result sign() {
         // 1.获取当前登录用户
@@ -136,14 +149,46 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return Result.ok();
     }
 
-    private User createUserWithPhone(String phone) {
-        //1.创建用户
-        User user = new User();
-        user.setPhone(phone);//设置手机号
-        user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));//设置默认昵称
-        user.setIcon("https://gss0.baidu.com/94o3dSag_xI4khGko9WTAnF6hhy/zhidao/wh%3D450%2C600/sign=bee1e21540ed2e73fcbc8e28b2318dbd/4610b912c8fcc3ce4b66c4a29845d688d53f20f8.jpg"); //设置默认头像
-        //2.保存用户到数据库
-        save(user);
-        return user;
+    @Override
+    public Result signCount() {
+        // 1.获取当前登录用户
+        Long userId = UserHolder.getUser().getId();
+
+        //2.获取日期
+        LocalDateTime today = LocalDateTime.now();
+
+        //3.拼接key
+        String keySuffix = today.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = USER_SIGN_KEY + userId + keySuffix;
+
+        //4.获取今天是本月的第几天    OFFSET是0~30，差1
+        int dayOfMonth = today.getDayOfMonth();
+
+        //5.获取本月截止今天为止的所有的签到记录，返回的是一个十进制的数字     BITFIELD sign:5:202203 GET u14 0
+        List<Long> result = stringRedisTemplate.opsForValue().bitField(key, BitFieldSubCommands.create().get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0));
+        if (result == null || result.isEmpty()) {
+            return Result.ok(0);
+        }
+
+        Long num = result.get(0);
+        if (num == null || num == 0) {
+            return Result.ok(0);
+        }
+        //6.循环遍历
+        int count = 0;//计数器
+        while (true) {
+            //7.让这个数字与1做与运算，得到数字的最后一个bit位判断这个bit位是否为0
+            if ((num & 1) == 0) {
+                //如果为0，说明未签到，结束
+                break;
+            } else {
+                //如果不为⊙，说明已签到，计数器+1
+                count++;
+            }
+            num = num >> 1;
+        }
+        return Result.ok(count);
     }
+
+
 }
