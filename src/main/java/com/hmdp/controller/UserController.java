@@ -102,4 +102,9 @@ public class UserController {
         // 4. 返回带有用户信息的成功结果
         return Result.ok(userDTO);
     }
+
+    @PostMapping("/sign")
+    public Result sign(){
+        return userService.sign();
+    }
 }
